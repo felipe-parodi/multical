@@ -1,4 +1,4 @@
-# Pollen Readme
+# Updated multical
 
 ## Install
 Clone this repo, then
