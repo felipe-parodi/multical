@@ -4,7 +4,12 @@
 Clone this repo, then
 
 ```console
-$ pip install -e .
+$ conda create -n mcal python=3.10 -y
+$ pip install opencv-contrib-python==4.6.0.66
+$ pip install pyqt5 pyvistaqt
+$ git clone https://github.com/felipe-parodi/multical.git
+$ pip install -e . 
+$ multical -h
 ```
 
 ## Usage
