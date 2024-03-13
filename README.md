@@ -11,6 +11,9 @@ $ pip install git+https://github.com/felipe-parodi/multical.git@main
 $ git clone 
 $ pip install -e . 
 $ multical -h
+
+or if you want with updated open-cv:
+follow creminem94 and use pip install opencv-contrib-python==4.7.0.68 opencv-python==4.7.0.68
 ```
 
 ## Usage
