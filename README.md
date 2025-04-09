@@ -8,7 +8,6 @@ $ conda create -n mcal python=3.10 -y
 $ conda activate mcal
 $ pip install opencv-contrib-python==4.6.0.66
 $ pip install pyqt5 pyvistaqt
-#$ pip install git+https://github.com/felipe-parodi/multical.git@main
 $ git clone thisrepo
 $ pip install -e . 
 $ multical -h
