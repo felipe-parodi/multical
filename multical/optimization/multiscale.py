@@ -19,8 +19,8 @@
 #     K[0:2, :] *= scale
 #     return camera.copy(intrinsic=K)
 
-# def multiscale_calibrate(boards, detections, image_size, intrinsic_error_limit, 
-#                         max_iter=10, eps=1e-3, model='standard', 
+# def multiscale_calibrate(boards, detections, image_size, intrinsic_error_limit,
+#                         max_iter=10, eps=1e-3, model='standard',
 #                         fix_aspect=False, has_skew=False, flags=0, max_images=None,
 #                         scales=[0.25, 0.5, 1.0]):
 #     """
@@ -28,15 +28,15 @@
 #     """
 #     camera = None
 #     final_err = intrinsic_error_limit
-    
+
 #     for scale in scales:
 #         info(f"Calibrating at scale {scale:.2f}")
 #         scaled_size = scale_image_size(image_size, scale)
 #         scaled_points = scale_points(detections, scale)
-        
+
 #         # Scale error limit proportionally
 #         scaled_error_limit = intrinsic_error_limit * scale
-        
+
 #         # Use previous estimate as starting point if available
 #         if camera is not None:
 #             scaled_camera = scale_camera_params(camera, scale)
@@ -46,7 +46,7 @@
 #             }
 #         else:
 #             kwargs = {}
-            
+
 #         # Calibrate at current scale
 #         camera, err = Camera.calibrate(
 #             boards=boards,
@@ -63,9 +63,9 @@
 #             **kwargs
 #         )
 #         final_err = err / scale  # Scale error back
-        
+
 #     # Scale camera parameters back to original size
 #     if camera is not None:
 #         camera = scale_camera_params(camera, 1.0/scales[-1])
-        
-#     return camera, final_err 
+
+#     return camera, final_err

@@ -1,4 +1,3 @@
-
 from functools import partial
 from multiprocessing import Pool, cpu_count, get_logger
 from multiprocessing.pool import ThreadPool
@@ -8,9 +7,11 @@ from structs.struct import map_list, concat_lists, split_list
 from tqdm import tqdm
 import traceback
 
+
 # Shortcut to multiprocessing's logger
 def error(msg, *args):
     return get_logger().error(msg, *args)
+
 
 class LogExceptions(object):
     def __init__(self, callable):
@@ -34,21 +35,19 @@ class LogExceptions(object):
 
 def parmap_list(f, xs, j=cpu_count() // 2, chunksize=1, pool=Pool, progress=tqdm):
 
-  with pool(processes=j) as pool:
-    iter = pool.imap(LogExceptions(f), xs, chunksize=chunksize)
-    
-    if progress is not None:
-      iter = progress(iter, total=len(xs))
+    with pool(processes=j) as pool:
+        iter = pool.imap(LogExceptions(f), xs, chunksize=chunksize)
 
-    return list(iter)
+        if progress is not None:
+            iter = progress(iter, total=len(xs))
 
-
+        return list(iter)
 
 
 def parmap_lists(f, xs_list, j=cpu_count() // 2, chunksize=1, pool=ThreadPool):
-  """ Map over a list of lists in parallel by flattening then splitting at the end"""
-  cam_lengths = map_list(len, xs_list)
-  xs = concat_lists(xs_list)
+    """Map over a list of lists in parallel by flattening then splitting at the end"""
+    cam_lengths = map_list(len, xs_list)
+    xs = concat_lists(xs_list)
 
-  results = parmap_list(f, xs, j=j, chunksize=chunksize, pool=pool)
-  return split_list(results, cam_lengths)
+    results = parmap_list(f, xs, j=j, chunksize=chunksize, pool=pool)
+    return split_list(results, cam_lengths)

@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 from multiprocessing import cpu_count
 import os
@@ -10,71 +9,102 @@ from simple_parsing import ArgumentParser, choice
 from simple_parsing.helpers import list_field
 
 
-@dataclass 
+@dataclass
 class PathOpts:
-  """File and path options for inputs and outputs"""
-  name: str = 'calibration'         # Filename to save outputs, e.g. calibration.json
-  output_path: Optional[str] = None # Path to save outputs, uses image path if unspecified
-  master: Optional[str] = None  # Use camera as master when exporting (default use first camera)
+    """File and path options for inputs and outputs"""
 
-  image_path: str = "."                 # Path to search for image folders
-  boards : Optional[str] = None         # Configuration file (YAML) for calibration boards
-  camera_pattern: Optional[str] = None  # Camera apth pattern example "{camera}/extrinsic"
-  cameras: List[str] = list_field()     # Explicit camera list
+    name: str = "calibration"  # Filename to save outputs, e.g. calibration.json
+    output_path: Optional[str] = (
+        None  # Path to save outputs, uses image path if unspecified
+    )
+    master: Optional[str] = (
+        None  # Use camera as master when exporting (default use first camera)
+    )
 
-  limit_images: Optional[int] = 200   # Limit images to enable faster calibration
+    image_path: str = "."  # Path to search for image folders
+    boards: Optional[str] = None  # Configuration file (YAML) for calibration boards
+    camera_pattern: Optional[str] = (
+        None  # Camera apth pattern example "{camera}/extrinsic"
+    )
+    cameras: List[str] = list_field()  # Explicit camera list
+
+    limit_images: Optional[int] = 200  # Limit images to enable faster calibration
 
 
-@dataclass 
+@dataclass
 class CameraOpts:
-  """ Camera model settings """
+    """Camera model settings"""
 
-  fix_aspect: bool = False  # Fix aspect ratio of cameras
-  allow_skew: bool = False  # Allow skew parameter in camera intrinsics
-  distortion_model: str = choice("standard", "rational", "thin_prism", "tilted", "full", default="standard")
-  motion_model: str = choice("rolling", "static", default="static")  # Camera motion model to use
-  isFisheye: bool = False # Use fisheye camera -> changes distortion models
-  intrinsic_error_limit: float = 0.5  # for iterative intrinsic calculation
-  
-  calibration: Optional[str] = None # Initialise from previous (or single camera) calibration
-  limit_intrinsic: Optional[int] = 50   # Limit intrinsic images to enable faster initialisation
+    fix_aspect: bool = False  # Fix aspect ratio of cameras
+    allow_skew: bool = False  # Allow skew parameter in camera intrinsics
+    distortion_model: str = choice(
+        "standard", "rational", "thin_prism", "tilted", "full", default="standard"
+    )
+    motion_model: str = choice(
+        "rolling", "static", default="static"
+    )  # Camera motion model to use
+    isFisheye: bool = False  # Use fisheye camera -> changes distortion models
+    intrinsic_error_limit: float = 0.5  # for iterative intrinsic calculation
 
-@dataclass 
+    calibration: Optional[str] = (
+        None  # Initialise from previous (or single camera) calibration
+    )
+    limit_intrinsic: Optional[int] = (
+        50  # Limit intrinsic images to enable faster initialisation
+    )
+
+
+@dataclass
 class RuntimeOpts:
-  """ Miscellaneous runtime parameters """
-  num_threads: int = cpu_count() - 1  # Number of cpu threads to use
-  log_level: str = choice('INFO', 'DEBUG', 'WARN', default='INFO') # Minimum log level
-  no_cache: bool = False # Don't attempt to load detections from cache
-  seed : int = 0 # Seed for repeatable runs
-  exclude_bad_poses : bool = True # Exclude poses which has error greater than pose_error_limit
-  pose_error_limit: float = 1.0
-  is_non_overlapping: bool = False  # for non-overlapping case consider hand-eye calibration
+    """Miscellaneous runtime parameters"""
+
+    num_threads: int = cpu_count() - 1  # Number of cpu threads to use
+    log_level: str = choice(
+        "INFO", "DEBUG", "WARN", default="INFO"
+    )  # Minimum log level
+    no_cache: bool = False  # Don't attempt to load detections from cache
+    seed: int = 0  # Seed for repeatable runs
+    exclude_bad_poses: bool = (
+        True  # Exclude poses which has error greater than pose_error_limit
+    )
+    pose_error_limit: float = 1.0
+    is_non_overlapping: bool = (
+        False  # for non-overlapping case consider hand-eye calibration
+    )
 
 
-@dataclass 
+@dataclass
 class OptimizerOpts:
-  """ Optimizer settings including outlier rejection settings and parameters to fix/adjust """
-  
-  iter : int = 3 # Iterations of bundle adjustment/outlier rejection
-  loss : str = choice('linear', 'soft_l1', 'huber', 'arctan', default='linear') # Loss function to use in bundle adjustment
+    """Optimizer settings including outlier rejection settings and parameters to fix/adjust"""
 
-  outlier_quantile : float = 0.75 # Quantile for outlier rejection (multiplied by threshold factor)
-  outlier_threshold : float = 5.0 # Threshold for outliers (factor of quartile of reprojection error)
-  auto_scale : Optional[float] = None # Threshold for auto_scale to reduce outlier influence (factor of upper quartile of reprojection error) - requires non-linear loss
-  reject_view_threshold: Optional[float] = None # Reject entire camera views if any point error exceeds this pixel threshold (applied after adjust_outliers)
+    iter: int = 3  # Iterations of bundle adjustment/outlier rejection
+    loss: str = choice(
+        "linear", "soft_l1", "huber", "arctan", default="linear"
+    )  # Loss function to use in bundle adjustment
 
-  fix_intrinsic: bool = False  # Constant camera intrinsic parameters
-  fix_camera_poses: bool = False  # Constant camera pose (extrinsic) parameters 
-  fix_board_poses: bool = False  # Constant poses between boards   
-  fix_motion: bool = False  # Constant camera motion estimates
-  adjust_board: bool = False  # Enable optimization for board non-planarity
+    outlier_quantile: float = (
+        0.75  # Quantile for outlier rejection (multiplied by threshold factor)
+    )
+    outlier_threshold: float = (
+        5.0  # Threshold for outliers (factor of quartile of reprojection error)
+    )
+    auto_scale: Optional[float] = (
+        None  # Threshold for auto_scale to reduce outlier influence (factor of upper quartile of reprojection error) - requires non-linear loss
+    )
+    reject_view_threshold: Optional[float] = (
+        None  # Reject entire camera views if any point error exceeds this pixel threshold (applied after adjust_outliers)
+    )
 
+    fix_intrinsic: bool = False  # Constant camera intrinsic parameters
+    fix_camera_poses: bool = False  # Constant camera pose (extrinsic) parameters
+    fix_board_poses: bool = False  # Constant poses between boards
+    fix_motion: bool = False  # Constant camera motion estimates
+    adjust_board: bool = False  # Enable optimization for board non-planarity
 
 
 def run_with(command_type):
-    parser = ArgumentParser(prog='multical')
+    parser = ArgumentParser(prog="multical")
     parser.add_arguments(command_type, dest="app")
 
     program = parser.parse_args()
     return program.app.execute()
-

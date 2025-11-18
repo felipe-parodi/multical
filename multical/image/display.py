@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 
+
 def to_color(image):
     if len(image.shape) == 2 or image.shape[2] == 1:
         return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
@@ -10,6 +11,7 @@ def to_color(image):
         return image[:, :, 0:3]
     else:
         assert False, "Unknown image shape: " + str(image.shape)
+
 
 def stack_images(images, resize_height=None, rotate=0):
 
@@ -34,9 +36,10 @@ def display_stacked(images, resize_height=None, rotate=0, resizeable=True):
     display(image, resizeable=resizeable)
 
 
-
 def display(t, name="image", resizeable=True, height=800):
-    cv2.namedWindow(name, flags=cv2.WINDOW_NORMAL if resizeable else cv2.WINDOW_AUTOSIZE)
+    cv2.namedWindow(
+        name, flags=cv2.WINDOW_NORMAL if resizeable else cv2.WINDOW_AUTOSIZE
+    )
     cv2.imshow(name, t)
 
     scale = height / t.shape[0]
@@ -48,5 +51,3 @@ def display(t, name="image", resizeable=True, height=800):
             return keyCode
 
     return -1
-
-

@@ -1,13 +1,13 @@
 from setuptools import setup, find_namespace_packages
 
 from os import path
+
 this_directory = path.abspath(path.dirname(__file__))
-with open(path.join(this_directory, 'README.md'), encoding='utf-8') as f:
+with open(path.join(this_directory, "README.md"), encoding="utf-8") as f:
     long_description = f.read()
 
 
 setup(
-
     name="multical",
     version="0.4.0",
     author="Oliver Batchelor",
@@ -21,21 +21,17 @@ setup(
         "Operating System :: OS Independent",
         "Topic :: Multimedia :: Graphics",
         "Topic :: Scientific/Engineering :: Image Processing",
-        "Topic :: Multimedia :: Graphics :: Capture :: Digital Camera"
+        "Topic :: Multimedia :: Graphics :: Capture :: Digital Camera",
     ],
-
     entry_points={
-        'console_scripts': [
-            'multical = multical.app.multical:cli',
+        "console_scripts": [
+            "multical = multical.app.multical:cli",
         ],
     },
-
     long_description=long_description,
-    long_description_content_type='text/markdown',
-
+    long_description_content_type="text/markdown",
     include_package_data=True,
-
-    install_requires = [
+    install_requires=[
         "numpy==1.26.4",
         "numba",
         "scipy",
@@ -49,12 +45,17 @@ setup(
         "numpy-quaternion",
         "omegaconf",
         "packaging",
-        "tqdm"
+        "tqdm",
     ],
-    
     extras_require={
-        'interactive': ['matplotlib', 'qtpy', 'pyvistaqt', 'pyvista', 'colour', 'qtawesome'],
+        "interactive": [
+            "matplotlib",
+            "qtpy",
+            "pyvistaqt",
+            "pyvista",
+            "colour",
+            "qtawesome",
+        ],
     },
-
-    python_requires='>=3.6',
+    python_requires=">=3.6",
 )

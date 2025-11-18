@@ -30,52 +30,68 @@ from .display import color_sets
 import pickle
 import json
 
-def detect_boards_cached(boards, images, detections_file, cache_key, load_cache=True, j=cpu_count()):
-  assert isinstance(boards, list)
 
-  detected_points = (try_load_detections(
-    detections_file, cache_key) if load_cache else None)
+def detect_boards_cached(
+    boards, images, detections_file, cache_key, load_cache=True, j=cpu_count()
+):
+    assert isinstance(boards, list)
 
-  if detected_points is None:
-    info("Detecting boards..")
-    detected_points = image.detect.detect_images(boards, images, j=j)
+    detected_points = (
+        try_load_detections(detections_file, cache_key) if load_cache else None
+    )
 
-    info(f"Writing detection cache to {detections_file}")
-    write_detections(detections_file, detected_points, cache_key)
+    if detected_points is None:
+        info("Detecting boards..")
+        detected_points = image.detect.detect_images(boards, images, j=j)
 
-  return detected_points
+        info(f"Writing detection cache to {detections_file}")
+        write_detections(detections_file, detected_points, cache_key)
+
+    return detected_points
+
 
 def num_valid_detections(boards, frames):
-  n = 0
-  for frame_detections in frames:
-    for board, dets in zip(boards, frame_detections):
-      if board.has_min_detections(dets): n = n + 1
-  return n
+    n = 0
+    for frame_detections in frames:
+        for board, dets in zip(boards, frame_detections):
+            if board.has_min_detections(dets):
+                n = n + 1
+    return n
+
 
 def check_detections(camera_names, boards, detected_points):
-  cameras = [k for k, fame_detections in zip(camera_names, detected_points)
-    if num_valid_detections(boards, fame_detections) == 0]
-    
-  assert len(cameras) == 0,\
-    f"cameras {cameras} have no valid detections, check board config"
-    
+    cameras = [
+        k
+        for k, fame_detections in zip(camera_names, detected_points)
+        if num_valid_detections(boards, fame_detections) == 0
+    ]
+
+    assert (
+        len(cameras) == 0
+    ), f"cameras {cameras} have no valid detections, check board config"
+
 
 def check_image_lengths(cameras, filenames, image_names):
-  for k, images in zip(cameras, filenames):
-    assert len(images) == len(image_names),\
-      f"mismatch between image names and camera {k}, "\
-      f"got {len(images)} filenames expected {len(image_names)}"
+    for k, images in zip(cameras, filenames):
+        assert len(images) == len(image_names), (
+            f"mismatch between image names and camera {k}, "
+            f"got {len(images)} filenames expected {len(image_names)}"
+        )
 
 
 def check_camera_images(camera_images):
-  assert len(camera_images.cameras) == len(camera_images.filenames),\
-    f"expected filenames to be a list of equal to number of cameras "\
-    f"{len(camera_images.cameras)} vs. {len(camera_images.filenames)}"
+    assert len(camera_images.cameras) == len(camera_images.filenames), (
+        f"expected filenames to be a list of equal to number of cameras "
+        f"{len(camera_images.cameras)} vs. {len(camera_images.filenames)}"
+    )
 
-  check_image_lengths(camera_images.cameras, camera_images.filenames, camera_images.image_names)
-  if 'images' in camera_images is not None:
-    check_image_lengths(camera_images.cameras, camera_images.images, camera_images.image_names)
-
+    check_image_lengths(
+        camera_images.cameras, camera_images.filenames, camera_images.image_names
+    )
+    if "images" in camera_images is not None:
+        check_image_lengths(
+            camera_images.cameras, camera_images.images, camera_images.image_names
+        )
 
 
 class Workspace:
@@ -105,100 +121,118 @@ class Workspace:
     def add_camera_images(self, camera_images, j=cpu_count()):
         check_camera_images(camera_images)
         self.names = self.names._extend(
-            camera=camera_images.cameras, image=camera_images.image_names)
+            camera=camera_images.cameras, image=camera_images.image_names
+        )
 
         self.filenames = camera_images.filenames
         self.image_path = camera_images.image_path
-        
-        if 'images' in camera_images:
-          self.images = camera_images.images
-          self.image_size = map_list(common_image_size, self.images)
+
+        if "images" in camera_images:
+            self.images = camera_images.images
+            self.image_size = map_list(common_image_size, self.images)
         else:
-          self._load_images(j=j)
+            self._load_images(j=j)
 
     def _load_images(self, j=cpu_count()):
         assert self.filenames is not None, "_load_images: no filenames set"
 
         info("Loading images..")
         self.images = image.detect.load_images(
-            self.filenames, j=j, prefix=self.image_path)
+            self.filenames, j=j, prefix=self.image_path
+        )
         self.image_size = map_list(common_image_size, self.images)
 
         info(f"Loaded {self.sizes.image * self.sizes.camera} images")
         info(
-            {k: image_size for k, image_size in zip(
-                self.names.camera, self.image_size)})
+            {k: image_size for k, image_size in zip(self.names.camera, self.image_size)}
+        )
 
-              
-    @property 
+    @property
     def detections_file(self):
-      return path.join(self.output_path, f"{self.name}.detections.pkl")
-
+        return path.join(self.output_path, f"{self.name}.detections.pkl")
 
     def detect_boards(self, boards, load_cache=True, j=cpu_count()):
         assert self.boards is None, "detect_boards: boards already set"
-        assert self.images is not None, "detect_boards: no images loaded, first use add_camera_images"
+        assert (
+            self.images is not None
+        ), "detect_boards: no images loaded, first use add_camera_images"
 
         board_names, self.boards = split_dict(boards)
         self.names = self.names._extend(board=board_names)
-        self.board_colors = color_sets['set1']
+        self.board_colors = color_sets["set1"]
         cache_key = self.fields("filenames", "boards", "image_sizes")
 
-        self.detected_points = detect_boards_cached(self.boards, self.images, 
-          self.detections_file, cache_key, load_cache, j=j)
+        self.detected_points = detect_boards_cached(
+            self.boards, self.images, self.detections_file, cache_key, load_cache, j=j
+        )
 
         self.point_table = tables.make_point_table(self.detected_points, self.boards)
         info("Detected point counts:")
         tables.table_info(self.point_table.valid, self.names)
 
     def set_calibration(self, cameras):
-      """
-      Set camera calibration from a dictionary of camera objects.
-      Cameras in the calibration file but not in current images will be ignored.
-      Cameras in current images but not in calibration file will raise an error.
+        """
+        Set camera calibration from a dictionary of camera objects.
+        Cameras in the calibration file but not in current images will be ignored.
+        Cameras in current images but not in calibration file will raise an error.
 
-      Args:
-        cameras: Dictionary mapping camera names to Camera objects
-      """
-      # Find which cameras are in both sets, and which are missing
-      current_cameras = set(self.names.camera)
-      calib_cameras = set(cameras.keys())
+        Args:
+          cameras: Dictionary mapping camera names to Camera objects
+        """
+        # Find which cameras are in both sets, and which are missing
+        current_cameras = set(self.names.camera)
+        calib_cameras = set(cameras.keys())
 
-      available_cameras = current_cameras & calib_cameras
-      missing_in_calib = current_cameras - calib_cameras
-      extra_in_calib = calib_cameras - current_cameras
+        available_cameras = current_cameras & calib_cameras
+        missing_in_calib = current_cameras - calib_cameras
+        extra_in_calib = calib_cameras - current_cameras
 
-      # Info about mismatches
-      if extra_in_calib:
-        info(f"Note: {len(extra_in_calib)} camera(s) in calibration file but not in current images (will be ignored):")
-        info(f"  {sorted(extra_in_calib)}")
-        info("")
+        # Info about mismatches
+        if extra_in_calib:
+            info(
+                f"Note: {len(extra_in_calib)} camera(s) in calibration file but not in current images (will be ignored):"
+            )
+            info(f"  {sorted(extra_in_calib)}")
+            info("")
 
-      if missing_in_calib:
-        info(f"ERROR: {len(missing_in_calib)} camera(s) in current images but not in calibration file:")
-        info(f"  {sorted(missing_in_calib)}")
-        info("")
-        raise ValueError(
-          f"Cannot use calibration file: missing intrinsics for {sorted(missing_in_calib)}.\n" +
-          f"Options:\n" +
-          f"  (1) Exclude these cameras from your image set, or\n" +
-          f"  (2) Remove --calibration flag to calibrate all cameras from scratch, or\n" +
-          f"  (3) Add intrinsic calibration for these cameras to your calibration file."
-        )
+        if missing_in_calib:
+            info(
+                f"ERROR: {len(missing_in_calib)} camera(s) in current images but not in calibration file:"
+            )
+            info(f"  {sorted(missing_in_calib)}")
+            info("")
+            raise ValueError(
+                f"Cannot use calibration file: missing intrinsics for {sorted(missing_in_calib)}.\n"
+                + f"Options:\n"
+                + f"  (1) Exclude these cameras from your image set, or\n"
+                + f"  (2) Remove --calibration flag to calibrate all cameras from scratch, or\n"
+                + f"  (3) Add intrinsic calibration for these cameras to your calibration file."
+            )
 
-      assert len(available_cameras) > 0, \
-        f"set_calibration: no cameras in common between images and calibration file"
+        assert (
+            len(available_cameras) > 0
+        ), f"set_calibration: no cameras in common between images and calibration file"
 
-      # Use only cameras that are in current image set (filtering out extras)
-      self.cameras = [cameras[k] for k in self.names.camera]
+        # Use only cameras that are in current image set (filtering out extras)
+        self.cameras = [cameras[k] for k in self.names.camera]
 
-      info(f"Loaded calibration for {len(self.cameras)} camera(s)")
-      for name, camera in zip(self.names.camera, self.cameras):
-          info(f"{name} {camera}")
-          info("")
+        info(f"Loaded calibration for {len(self.cameras)} camera(s)")
+        for name, camera in zip(self.names.camera, self.cameras):
+            info(f"{name} {camera}")
+            info("")
 
-    def calibrate_single(self, camera_model, intrinsic_error_limit, fix_aspect=False, has_skew=False, max_images=None, isFisheye=False):
-        assert self.detected_points is not None, "calibrate_single: no points found, first use detect_boards to find corner points"
+    def calibrate_single(
+        self,
+        camera_model,
+        intrinsic_error_limit,
+        fix_aspect=False,
+        has_skew=False,
+        max_images=None,
+        isFisheye=False,
+    ):
+        assert (
+            self.detected_points is not None
+        ), "calibrate_single: no points found, first use detect_boards to find corner points"
 
         check_detections(self.names.camera, self.boards, self.detected_points)
 
@@ -212,7 +246,8 @@ class Workspace:
                 model=camera_model,
                 fix_aspect=fix_aspect,
                 has_skew=has_skew,
-                max_images=max_images)
+                max_images=max_images,
+            )
         else:
             self.cameras, errs = calibrate_cameras_fisheye(
                 self.boards,
@@ -221,16 +256,32 @@ class Workspace:
                 model=camera_model,
                 fix_aspect=fix_aspect,
                 has_skew=has_skew,
-                max_images=max_images)
+                max_images=max_images,
+            )
 
         for name, camera, err in zip(self.names.camera, self.cameras, errs):
             info(f"Calibrated {name}, with RMS={err:.2f}")
             info(camera)
             info("")
 
-    def initialise_poses(self, motion_model=StaticFrames, camera_poses=None, exclude_bad_poses=True, pose_error_limit=1.0, is_non_overlapping=False):
-        assert self.cameras is not None, "initialise_poses: no cameras set, first use calibrate_single or set_cameras"
-        self.pose_table = tables.make_pose_table(self.point_table, self.boards, self.cameras, exclude_bad_poses, pose_error_limit)
+    def initialise_poses(
+        self,
+        motion_model=StaticFrames,
+        camera_poses=None,
+        exclude_bad_poses=True,
+        pose_error_limit=1.0,
+        is_non_overlapping=False,
+    ):
+        assert (
+            self.cameras is not None
+        ), "initialise_poses: no cameras set, first use calibrate_single or set_cameras"
+        self.pose_table = tables.make_pose_table(
+            self.point_table,
+            self.boards,
+            self.cameras,
+            exclude_bad_poses,
+            pose_error_limit,
+        )
 
         info("Pose counts:")
         tables.table_info(self.pose_table.valid, self.names)
@@ -241,8 +292,13 @@ class Workspace:
             handeye.initialise_camera_poses()
             camera_poses = handeye.cam_init
 
-        pose_init = tables.initialise_poses(self.pose_table,
-          camera_poses=None if camera_poses is None else np.array([camera_poses[k] for k in self.names.camera])
+        pose_init = tables.initialise_poses(
+            self.pose_table,
+            camera_poses=(
+                None
+                if camera_poses is None
+                else np.array([camera_poses[k] for k in self.names.camera])
+            ),
         )
 
         calib = Calibration(
@@ -260,75 +316,110 @@ class Workspace:
         self.calibrations["initialisation"] = calib
         return calib
 
-    def calibrate(self, name="calibration",
-        camera_poses=True, motion=True, board_poses=True,
-        cameras=False, boards=False,
-        loss='linear', tolerance=1e-4, num_adjustments=3,
-        quantile=0.75, auto_scale=None, outlier_threshold=5.0,
-        reject_view_threshold=None) -> Calibration:
+    def calibrate(
+        self,
+        name="calibration",
+        camera_poses=True,
+        motion=True,
+        board_poses=True,
+        cameras=False,
+        boards=False,
+        loss="linear",
+        tolerance=1e-4,
+        num_adjustments=3,
+        quantile=0.75,
+        auto_scale=None,
+        outlier_threshold=5.0,
+        reject_view_threshold=None,
+    ) -> Calibration:
 
-        calib : Calibration = self.latest_calibration.enable(
-            cameras=cameras, boards=boards, camera_poses=camera_poses,
-            motion=motion, board_poses=board_poses)
+        calib: Calibration = self.latest_calibration.enable(
+            cameras=cameras,
+            boards=boards,
+            camera_poses=camera_poses,
+            motion=motion,
+            board_poses=board_poses,
+        )
 
         # --- Existing iterative refinement ---
         calib = calib.adjust_outliers(
-          loss=loss,
-          tolerance=tolerance,
-          num_adjustments=num_adjustments,
-          select_outliers = select_threshold(quantile=quantile, factor=outlier_threshold),
-          select_scale = select_threshold(quantile=quantile, factor=auto_scale) if auto_scale is not None else None
+            loss=loss,
+            tolerance=tolerance,
+            num_adjustments=num_adjustments,
+            select_outliers=select_threshold(
+                quantile=quantile, factor=outlier_threshold
+            ),
+            select_scale=(
+                select_threshold(quantile=quantile, factor=auto_scale)
+                if auto_scale is not None
+                else None
+            ),
         )
-        calib.report(f"After adjust_outliers for '{name}'") # Report state after adjustments
+        calib.report(
+            f"After adjust_outliers for '{name}'"
+        )  # Report state after adjustments
 
         # --- New View Rejection Step ---
         if reject_view_threshold is not None and reject_view_threshold > 0:
             info(f"Applying view rejection with threshold: {reject_view_threshold} px")
-            errors, valid = tables.reprojection_error(calib.reprojected, calib.point_table)
-            
+            errors, valid = tables.reprojection_error(
+                calib.reprojected, calib.point_table
+            )
+
             # Start with the mask from adjust_outliers
-            view_mask = calib.inliers.copy() 
+            view_mask = calib.inliers.copy()
             rejected_views_count = 0
-            
+
             # Iterate through all camera/frame views
             # Use calib.size which should have cameras, rig_poses dimensions
             for cam_idx in range(calib.size.cameras):
                 for frame_idx in range(calib.size.rig_poses):
                     # Check points valid *both* intrinsically and for this view
                     view_valid_mask = valid[cam_idx, frame_idx]
-                    if not np.any(view_valid_mask): # Skip if no valid points in this view
-                        continue 
-                        
+                    if not np.any(
+                        view_valid_mask
+                    ):  # Skip if no valid points in this view
+                        continue
+
                     view_errors = errors[cam_idx, frame_idx][view_valid_mask]
-                    
+
                     # If any valid point in this view exceeds the threshold
                     if np.any(view_errors > reject_view_threshold):
-                        if np.any(view_mask[cam_idx, frame_idx]): # Check if not already fully masked
-                           rejected_views_count += 1
+                        if np.any(
+                            view_mask[cam_idx, frame_idx]
+                        ):  # Check if not already fully masked
+                            rejected_views_count += 1
                         # Reject the entire view by setting its mask slice to False
-                        view_mask[cam_idx, frame_idx] = False 
+                        view_mask[cam_idx, frame_idx] = False
 
             num_inliers_before = np.sum(calib.inliers)
             num_inliers_after = np.sum(view_mask)
-            info(f"Rejected {rejected_views_count} views containing points with error > {reject_view_threshold} px.")
-            info(f"Point count changed from {num_inliers_before} to {num_inliers_after}.")
+            info(
+                f"Rejected {rejected_views_count} views containing points with error > {reject_view_threshold} px."
+            )
+            info(
+                f"Point count changed from {num_inliers_before} to {num_inliers_after}."
+            )
 
             if rejected_views_count > 0:
-                 # Update calibration object with the new view mask
-                 calib = calib.copy(inlier_mask=view_mask)
-                 # Run bundle adjustment one last time with the view-based mask
-                 info("Running final bundle adjustment pass after view rejection.")
-                 # Determine f_scale for the final pass (e.g., using auto_scale logic or just 1.0)
-                 final_f_scale = (select_threshold(quantile=quantile, factor=auto_scale)(calib.reprojection_inliers) 
-                                 if auto_scale is not None else 1.0)
-                 calib = calib.bundle_adjust(
-                     loss=loss,
-                     tolerance=tolerance,
-                     f_scale=final_f_scale
-                 )
-                 calib.report(f"After final adjustment post view rejection for '{name}'")
+                # Update calibration object with the new view mask
+                calib = calib.copy(inlier_mask=view_mask)
+                # Run bundle adjustment one last time with the view-based mask
+                info("Running final bundle adjustment pass after view rejection.")
+                # Determine f_scale for the final pass (e.g., using auto_scale logic or just 1.0)
+                final_f_scale = (
+                    select_threshold(quantile=quantile, factor=auto_scale)(
+                        calib.reprojection_inliers
+                    )
+                    if auto_scale is not None
+                    else 1.0
+                )
+                calib = calib.bundle_adjust(
+                    loss=loss, tolerance=tolerance, f_scale=final_f_scale
+                )
+                calib.report(f"After final adjustment post view rejection for '{name}'")
             else:
-                 info("No additional views rejected based on threshold.")
+                info("No additional views rejected based on threshold.")
 
         self.calibrations[name] = calib
         return calib
@@ -338,7 +429,7 @@ class Workspace:
         return self.names._map(len)
 
     @property
-    def initialisation(self)  -> Calibration:
+    def initialisation(self) -> Calibration:
         return self.calibrations["initialisation"]
 
     @property
@@ -356,9 +447,11 @@ class Workspace:
         return self.calibrations
 
     def push_calibration(self, name, calib):
-      if name in self.calibrations:
-        raise KeyError(f"calibration {name} exists already {list(self.calibrations.keys())}")
-      self.calibrations[name] = calib
+        if name in self.calibrations:
+            raise KeyError(
+                f"calibration {name} exists already {list(self.calibrations.keys())}"
+            )
+        self.calibrations[name] = calib
 
     def get_camera_sets(self):
         if self.has_calibrations():
@@ -379,15 +472,14 @@ class Workspace:
 
         return export_json(calib, self.names, self.filenames, master=master)
 
-
     def export(self, filename=None, master=None):
-      filename = filename or path.join(self.output_path, f"{self.name}.json")
-      info(f"Exporting calibration to {filename}")
+        filename = filename or path.join(self.output_path, f"{self.name}.json")
+        info(f"Exporting calibration to {filename}")
 
-      data = self.export_json(master=master)
-      with open(filename, 'w') as outfile:
-        json.dump(to_dicts(data), outfile, indent=2)
-        
+        data = self.export_json(master=master)
+        with open(filename, "w") as outfile:
+            json.dump(to_dicts(data), outfile, indent=2)
+
     def dump(self, filename=None):
         filename = filename or path.join(self.output_path, f"{self.name}.pkl")
 
@@ -397,8 +489,7 @@ class Workspace:
 
     @staticmethod
     def load(filename):
-        assert path.isfile(
-            filename), f"Workspace.load: file does not exist {filename}"
+        assert path.isfile(filename), f"Workspace.load: file does not exist {filename}"
         with open(filename, "rb") as file:
             ws = pickle.load(file)
             return ws
