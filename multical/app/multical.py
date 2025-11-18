@@ -28,4 +28,6 @@ def cli():
   run_with(Multical)
 
 if __name__ == '__main__':
+  print(f"Multical version: {__version__}")
+  print("STARTING MULTICAL")
   cli()

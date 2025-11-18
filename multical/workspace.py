@@ -152,12 +152,47 @@ class Workspace:
         tables.table_info(self.point_table.valid, self.names)
 
     def set_calibration(self, cameras):
-      assert set(self.names.camera) == set(cameras.keys()),\
-         f"set_calibration: cameras don't match"\
-         f"{set(self.names.camera)} vs. {set(cameras.keys())}"
+      """
+      Set camera calibration from a dictionary of camera objects.
+      Cameras in the calibration file but not in current images will be ignored.
+      Cameras in current images but not in calibration file will raise an error.
 
+      Args:
+        cameras: Dictionary mapping camera names to Camera objects
+      """
+      # Find which cameras are in both sets, and which are missing
+      current_cameras = set(self.names.camera)
+      calib_cameras = set(cameras.keys())
+
+      available_cameras = current_cameras & calib_cameras
+      missing_in_calib = current_cameras - calib_cameras
+      extra_in_calib = calib_cameras - current_cameras
+
+      # Info about mismatches
+      if extra_in_calib:
+        info(f"Note: {len(extra_in_calib)} camera(s) in calibration file but not in current images (will be ignored):")
+        info(f"  {sorted(extra_in_calib)}")
+        info("")
+
+      if missing_in_calib:
+        info(f"ERROR: {len(missing_in_calib)} camera(s) in current images but not in calibration file:")
+        info(f"  {sorted(missing_in_calib)}")
+        info("")
+        raise ValueError(
+          f"Cannot use calibration file: missing intrinsics for {sorted(missing_in_calib)}.\n" +
+          f"Options:\n" +
+          f"  (1) Exclude these cameras from your image set, or\n" +
+          f"  (2) Remove --calibration flag to calibrate all cameras from scratch, or\n" +
+          f"  (3) Add intrinsic calibration for these cameras to your calibration file."
+        )
+
+      assert len(available_cameras) > 0, \
+        f"set_calibration: no cameras in common between images and calibration file"
+
+      # Use only cameras that are in current image set (filtering out extras)
       self.cameras = [cameras[k] for k in self.names.camera]
-      info("Cameras set...")
+
+      info(f"Loaded calibration for {len(self.cameras)} camera(s)")
       for name, camera in zip(self.names.camera, self.cameras):
           info(f"{name} {camera}")
           info("")
@@ -226,22 +261,74 @@ class Workspace:
         return calib
 
     def calibrate(self, name="calibration",
-        camera_poses=True, motion=True, board_poses=True, 
+        camera_poses=True, motion=True, board_poses=True,
         cameras=False, boards=False,
         loss='linear', tolerance=1e-4, num_adjustments=3,
-        quantile=0.75, auto_scale=None, outlier_threshold=5.0)  -> Calibration:
+        quantile=0.75, auto_scale=None, outlier_threshold=5.0,
+        reject_view_threshold=None) -> Calibration:
 
         calib : Calibration = self.latest_calibration.enable(
             cameras=cameras, boards=boards, camera_poses=camera_poses,
             motion=motion, board_poses=board_poses)
-            
+
+        # --- Existing iterative refinement ---
         calib = calib.adjust_outliers(
-          loss=loss, 
+          loss=loss,
           tolerance=tolerance,
           num_adjustments=num_adjustments,
           select_outliers = select_threshold(quantile=quantile, factor=outlier_threshold),
           select_scale = select_threshold(quantile=quantile, factor=auto_scale) if auto_scale is not None else None
         )
+        calib.report(f"After adjust_outliers for '{name}'") # Report state after adjustments
+
+        # --- New View Rejection Step ---
+        if reject_view_threshold is not None and reject_view_threshold > 0:
+            info(f"Applying view rejection with threshold: {reject_view_threshold} px")
+            errors, valid = tables.reprojection_error(calib.reprojected, calib.point_table)
+            
+            # Start with the mask from adjust_outliers
+            view_mask = calib.inliers.copy() 
+            rejected_views_count = 0
+            
+            # Iterate through all camera/frame views
+            # Use calib.size which should have cameras, rig_poses dimensions
+            for cam_idx in range(calib.size.cameras):
+                for frame_idx in range(calib.size.rig_poses):
+                    # Check points valid *both* intrinsically and for this view
+                    view_valid_mask = valid[cam_idx, frame_idx]
+                    if not np.any(view_valid_mask): # Skip if no valid points in this view
+                        continue 
+                        
+                    view_errors = errors[cam_idx, frame_idx][view_valid_mask]
+                    
+                    # If any valid point in this view exceeds the threshold
+                    if np.any(view_errors > reject_view_threshold):
+                        if np.any(view_mask[cam_idx, frame_idx]): # Check if not already fully masked
+                           rejected_views_count += 1
+                        # Reject the entire view by setting its mask slice to False
+                        view_mask[cam_idx, frame_idx] = False 
+
+            num_inliers_before = np.sum(calib.inliers)
+            num_inliers_after = np.sum(view_mask)
+            info(f"Rejected {rejected_views_count} views containing points with error > {reject_view_threshold} px.")
+            info(f"Point count changed from {num_inliers_before} to {num_inliers_after}.")
+
+            if rejected_views_count > 0:
+                 # Update calibration object with the new view mask
+                 calib = calib.copy(inlier_mask=view_mask)
+                 # Run bundle adjustment one last time with the view-based mask
+                 info("Running final bundle adjustment pass after view rejection.")
+                 # Determine f_scale for the final pass (e.g., using auto_scale logic or just 1.0)
+                 final_f_scale = (select_threshold(quantile=quantile, factor=auto_scale)(calib.reprojection_inliers) 
+                                 if auto_scale is not None else 1.0)
+                 calib = calib.bundle_adjust(
+                     loss=loss,
+                     tolerance=tolerance,
+                     f_scale=final_f_scale
+                 )
+                 calib.report(f"After final adjustment post view rejection for '{name}'")
+            else:
+                 info("No additional views rejected based on threshold.")
 
         self.calibrations[name] = calib
         return calib

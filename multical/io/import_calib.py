@@ -77,7 +77,7 @@ def import_pose_graph(poses, names):
 
 
 def load_json(filename):
-    with open(filename) as json_file:
+    with open(filename, 'r', encoding='utf-8') as json_file:
         d = json.loads(json_file.read())
         return to_structs(d)
 

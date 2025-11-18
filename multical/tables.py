@@ -360,7 +360,7 @@ def initialise_poses(pose_table, camera_poses=None):
     report_poses("camera", camera_poses, camera.poses)
     camera = Table.create(
       poses=camera_poses,
-      valid=np.ones(camera_poses.shape[0], dtype=np.bool)
+      valid=np.ones(camera_poses.shape[0], dtype=bool)
     )
     
   board  = estimate_relative_poses_inv(pose_table, axis=2)

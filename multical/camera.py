@@ -22,6 +22,8 @@ from tqdm import tqdm
 
 from structs.struct import split_list
 
+# from .optimization.multiscale import multiscale_calibrate
+
 
 
 class Camera(Parameters):
@@ -44,7 +46,8 @@ class Camera(Parameters):
       standard=0,
       rational=cv2.CALIB_RATIONAL_MODEL,
       tilted=cv2.CALIB_TILTED_MODEL,
-      thin_prism=cv2.CALIB_THIN_PRISM_MODEL
+      thin_prism=cv2.CALIB_THIN_PRISM_MODEL,
+      full=cv2.CALIB_RATIONAL_MODEL + cv2.CALIB_THIN_PRISM_MODEL + cv2.CALIB_TILTED_MODEL
   )
 
   def __str__(self):
@@ -68,10 +71,29 @@ class Camera(Parameters):
   @staticmethod
   def calibrate(boards, intrinsic_error_limit, detections, image_size, max_iter=10, eps=1e-3,
                 model='standard', fix_aspect=False, has_skew=False, flags=0, max_images=None):
+  # def calibrate(boards, detections, image_size, intrinsic_error_limit, 
+  #               max_iter=10, eps=1e-3, model='standard', fix_aspect=False, 
+  #               has_skew=False, flags=0, max_images=None, use_multiscale=False,
+  #               scales=[0.25, 0.5, 1.0], **kwargs):
     '''
     iteratively selects best images to calculate intrinsic parameters
     '''
-
+    # if use_multiscale:
+    #     return multiscale_calibrate(
+    #         boards=boards,
+    #         detections=detections, 
+    #         image_size=image_size,
+    #         intrinsic_error_limit=intrinsic_error_limit,
+    #         max_iter=max_iter,
+    #         eps=eps,
+    #         model=model,
+    #         fix_aspect=fix_aspect,
+    #         has_skew=has_skew,
+    #         flags=flags,
+    #         max_images=max_images,
+    #         scales=scales,
+    #         **kwargs
+    #     )
     points = calibration_points(boards, detections)
     if max_images is not None:
       points = top_detection_coverage(points, max_images, image_size)
@@ -80,6 +102,9 @@ class Camera(Parameters):
     criteria = (cv2.TERM_CRITERIA_EPS +
                 cv2.TERM_CRITERIA_MAX_ITER, max_iter, eps)
     flags = Camera.flags(model, fix_aspect) | flags
+    print("FIXED ALL, K1, K2, K3, ZERO TANGENT DIST")
+    # flags = Camera.flags(model, fix_aspect) | flags | cv2.CALIB_FIX_K1 | cv2.CALIB_FIX_K2 | cv2.CALIB_FIX_K3
+    flags = Camera.flags(model, fix_aspect) | flags | cv2.CALIB_FIX_K1 | cv2.CALIB_FIX_K2 | cv2.CALIB_FIX_K3 | cv2.CALIB_ZERO_TANGENT_DIST
 
     err = intrinsic_error_limit
     while abs(err) >= intrinsic_error_limit:
@@ -113,7 +138,7 @@ class Camera(Parameters):
   @cached_property
   def undistort_map(self):
     m, _ = cv2.initUndistortRectifyMap(self.intrinsic, self.dist, None,
-                                       self.intrinsic, self.image_size, cv2.CV_32FC2)
+                                      self.intrinsic, self.image_size, cv2.CV_32FC2)
     return m
 
   def undistort_points(self, points):

@@ -293,11 +293,10 @@ class Calibration(parameters.Parameters):
     inliers = error_stats(self.reprojection_inliers)
 
     if self.inlier_mask is not None:
-      info(f"{stage} reprojection RMS={inliers.rms:.3f} ({overall.rms:.3f}), "
-           f"n={inliers.n} ({overall.n}), quantiles={overall.quantiles}")
+      info(f"{stage} reprojection RMS={inliers.rms:.3f}, n={inliers.n}, quantiles={inliers.quantiles}")
     else:
-      info(f"{stage} reprojection RMS={overall.rms:.3f}, n={overall.n}, "
-           f"quantiles={overall.quantiles}")
+      overall = error_stats(self.reprojection_error)
+      info(f"{stage} reprojection RMS={overall.rms:.3f}, n={overall.n}, quantiles={overall.quantiles}")
 
 
 

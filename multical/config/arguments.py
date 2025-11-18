@@ -31,7 +31,7 @@ class CameraOpts:
 
   fix_aspect: bool = False  # Fix aspect ratio of cameras
   allow_skew: bool = False  # Allow skew parameter in camera intrinsics
-  distortion_model: str = choice("standard", "rational", "thin_prism", "tilted", default="standard")
+  distortion_model: str = choice("standard", "rational", "thin_prism", "tilted", "full", default="standard")
   motion_model: str = choice("rolling", "static", default="static")  # Camera motion model to use
   isFisheye: bool = False # Use fisheye camera -> changes distortion models
   intrinsic_error_limit: float = 0.5  # for iterative intrinsic calculation
@@ -61,6 +61,7 @@ class OptimizerOpts:
   outlier_quantile : float = 0.75 # Quantile for outlier rejection (multiplied by threshold factor)
   outlier_threshold : float = 5.0 # Threshold for outliers (factor of quartile of reprojection error)
   auto_scale : Optional[float] = None # Threshold for auto_scale to reduce outlier influence (factor of upper quartile of reprojection error) - requires non-linear loss
+  reject_view_threshold: Optional[float] = None # Reject entire camera views if any point error exceeds this pixel threshold (applied after adjust_outliers)
 
   fix_intrinsic: bool = False  # Constant camera intrinsic parameters
   fix_camera_poses: bool = False  # Constant camera pose (extrinsic) parameters 

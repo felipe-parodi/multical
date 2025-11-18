@@ -1,0 +1,153 @@
+# Plan for interactive multical calibration:
+
+Here’s a tight, end‑to‑end playbook for finding, visualising, and pruning bad Charuco‑corner observations while you run multical, wired so that each step can be driven from a Jupyter notebook or a thin Dash/Gradio front‑end.
+
+🗺️ Workflow outline
+
+Phase	Goal	Key artefacts
+1. Detect + cache	Run multical calibrate --cache_detections so every corner lands in calibration.detections.pkl (numpy structured array).	raw detections
+2. Solve (all data)	Call the bundle adjuster with Soft‑L1 (δ≈1 px) and log residuals via Problem::Evaluate() or SciPy’s least_squares callback.	residuals.npy, weights.npy
+3. Diagnose	Plot residuals ↔ radial‑dist, histograms, image overlays; flag outliers.	interactive notebook
+4. Cull	Drop rows whose weight < τ or	r
+5. Iterate	Repeat 2–4 until the tail vanishes and graph remains connected.	final calibration.pkl
+🔍 Phase‑by‑phase details
+1 ⃣ Detection cache
+multical already serialises a detections.pkl workspace that stores (camera, frame, board_id, corner_id, u, v). Operating on that file keeps the expensive Charuco detection outside the loop.​ 
+GitHub
+
+2 ⃣ Residual dump
+Add two lines after workspace.optimize():
+
+python
+Copy code
+from multical.optimization import ceres_helpers
+residuals, weights, meta = ceres_helpers.dump_residuals(workspace)  # writes .npy
+Internally this calls Problem::Evaluate in Ceres, which returns both residual values and robust‑loss weights.﻿ 
+Ceres Solver
+
+If you rely on SciPy’s backend, pass callback=lambda x, cost, g: np.save('iter.npy', fun(x)) to least_squares.﻿ 
+scipy-cookbook.readthedocs.io
+SciPy Documentation
+
+3 ⃣ Interactive diagnostics
+Histogram of influence weights—compute 
+𝑤
+𝑖
+=
+𝜌
+′
+(
+𝑟
+𝑖
+2
+)
+/
+(
+2
+𝑟
+𝑖
+)
+w 
+i
+​
+ =ρ 
+′
+ (r 
+i
+2
+​
+ )/(2r 
+i
+​
+ ); for Soft‑L1, 
+𝑤
+=
+1
+/
+1
++
+𝑟
+2
+w=1/ 
+1+r 
+2
+ 
+​
+ .﻿ 
+Stack Overflow
+GitHub
+
+Scatter of |r| vs radial distance quickly shows residuals pretending to be distortion.
+
+Image overlay—draw the re‑projected red × on the offending frame to see mis‑ID’d markers.﻿ 
+OpenCV
+
+Make it live:
+
+python
+Copy code
+import plotly.graph_objects as go, ipywidgets as w, numpy as np
+r = np.load('residuals.npy'); wts = np.load('weights.npy')
+fig = go.FigureWidget(go.Scatter(y=np.abs(r), mode='markers'))
+out = w.Output()
+
+def click(trace, points, *_):
+    with out: out.clear_output()
+    idx = points.point_inds[0]
+    print(meta[idx])         # camera, frame, corner
+    show_overlay(meta[idx])  # your own helper
+fig.data[0].on_click(click)   # Plotly click‑event hook 
+display(fig, out)
+```﻿
+
+Plotly’s `on_click` and ipywidgets’ `interact` let you flag a point and push its index onto a **“ban‑list”** slider or checklist widget.﻿ :contentReference[oaicite:5]{index=5}  
+
+### 4 ⃣ Outlier culling logic
+* **Weight rule:** drop any observation with \(w_i<0.2\) (~ |r| > 2.2 px under Soft‑L1).  
+* **Sigma rule:** compute robust σ (MAD) and cut |r| > 3 σ.  
+* **Connectivity guard:** before each solve, verify that the board–camera graph is still one connected component; if not, lower the threshold or keep the edge.﻿ :contentReference[oaicite:6]{index=6}  
+
+Store the mask in `workspace.detections["keep"]` so you can toggle it interactively.
+
+### 5 ⃣ Iterate until convergence
+Each loop should shrink:
+
+max|r| : 1600 → 30 px 95‑pct : 0.9 → 0.4 px tail : single‑point → none
+
+yaml
+Copy code
+
+If the 95‑percentile plateaus while max|r| keeps falling, you’re done—the last big spike was the only real outlier.
+
+---
+
+## 🛠️ Reusable helper scripts
+
+| Script | Purpose |
+|--------|---------|
+| `dump_residuals.py` | Save residuals, weights, and lookup metadata after any multical solve. |
+| `plot_residuals.ipynb` | Live widgets (Plotly & ipywidgets) to explore, click, and ban points. |
+| `recalibrate.py` | Reads `banlist.json`, filters detections, reruns `workspace.optimize()`, writes new residuals. |
+| `graph_check.py` | Warn if any camera or board is disconnected after masking. |
+
+All four scripts are <100 lines each and chain through a Makefile so `make refine` loops until no new bans appear.
+
+---
+
+## 📌 Key references  
+
+Citations cover residual extraction, robust‑loss math, Charuco detection details, interactive plotting APIs, and multical file formats:
+
+turn1view0 | SciPy bundle‐adjust tutorial  
+turn4search1 | Ceres `Problem::Evaluate` usage  
+turn5view0 | OpenCV Charuco detection tutorial  
+turn8search0 | `scipy.optimize.least_squares` loss docs  
+turn8search1 | Soft‑L1 influence formula discussion  
+turn8search4 | Ceres `loss_function.h` source code  
+turn6view0 | ipywidgets interact guide  
+turn9search0 | Plotly scatter click‑event API  
+turn10search0 | `multical` outputs & workspace files  
+turn13search2 | SO answer on outlier rejection vs robustifier  
+
+With this scaffold you can *see* every rogue corner, ban it with a click, and rerun the solver until the residual landscape is clean—all inside the notebook you already use for downstream analysis.
+::contentReference[oaicite:7]{index=7}

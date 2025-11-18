@@ -36,11 +36,11 @@ setup(
     include_package_data=True,
 
     install_requires = [
-        "numpy",
+        "numpy==1.26.4",
         "numba",
         "scipy",
         "matplotlib",
-        "opencv-contrib-python>=4.5.0.0",
+        "opencv-contrib-python>=4.5.0.0,<4.7.0",
         "simple-parsing",
         "natsort",
         "cached-property",
