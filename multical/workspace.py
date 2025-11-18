@@ -26,6 +26,7 @@ from structs.numpy import shape
 from .camera_fisheye import calibrate_cameras_fisheye
 from .io.logging import MemoryHandler, info
 from .display import color_sets
+from .io.detections import try_load_cache_data
 
 import pickle
 import json
@@ -36,10 +37,18 @@ def detect_boards_cached(
 ):
     assert isinstance(boards, list)
 
+    # First try exact cache match
     detected_points = (
         try_load_detections(detections_file, cache_key) if load_cache else None
     )
 
+    # If exact match fails, try partial cache reuse
+    if detected_points is None and load_cache:
+        detected_points = detect_boards_with_partial_cache(
+            boards, images, detections_file, cache_key, j=j
+        )
+
+    # If still no detections, detect all
     if detected_points is None:
         info("Detecting boards..")
         detected_points = image.detect.detect_images(boards, images, j=j)
@@ -48,6 +57,107 @@ def detect_boards_cached(
         write_detections(detections_file, detected_points, cache_key)
 
     return detected_points
+
+
+def detect_boards_with_partial_cache(boards, images, detections_file, cache_key, j=cpu_count()):
+    """
+    Try to reuse cached detections for cameras that exist in both cache and current run.
+    Only detect boards for new cameras.
+    """
+    cached_data = try_load_cache_data(detections_file)
+    if cached_data is None:
+        return None
+
+    cached_key = cached_data.get("cache_key", {})
+
+    # Check if cache has camera_names
+    current_camera_names = cache_key.get("camera_names", [])
+    cached_camera_names = cached_key.get("camera_names", [])
+
+    if not current_camera_names or not cached_camera_names:
+        info("Cache doesn't include camera names - cannot do partial reuse")
+        return None
+
+    # Check if boards config matches
+    if cached_key.get("boards") != cache_key.get("boards"):
+        info("Board configuration changed - cannot reuse cache")
+        return None
+
+    # Match cameras by name
+    cached_detections = cached_data.get("detected_points", [])
+    cached_filenames = cached_key.get("filenames", [])
+    cached_image_sizes = cached_key.get("image_sizes", [])
+
+    current_filenames = cache_key.get("filenames", [])
+    current_image_sizes = cache_key.get("image_sizes", [])
+
+    # Build lookup dict for cached data
+    cache_lookup = {}
+    for cam_name, detections, filenames, img_size in zip(
+        cached_camera_names, cached_detections, cached_filenames, cached_image_sizes
+    ):
+        cache_lookup[cam_name] = {
+            'detections': detections,
+            'filenames': filenames,
+            'image_size': img_size
+        }
+
+    # Determine which cameras we can reuse and which need detection
+    cameras_to_detect = []
+    cameras_to_detect_indices = []
+    reused_count = 0
+    detect_count = 0
+
+    result_detections = []
+
+    for i, (cam_name, filenames, img_size, imgs) in enumerate(zip(
+        current_camera_names, current_filenames, current_image_sizes, images
+    )):
+        if cam_name in cache_lookup:
+            cached = cache_lookup[cam_name]
+            # Check if filenames and image size match
+            if (cached['filenames'] == filenames and
+                cached['image_size'] == img_size):
+                # Reuse cached detections
+                result_detections.append(cached['detections'])
+                reused_count += 1
+                info(f"  Reusing cached detections for {cam_name}")
+            else:
+                # Need to re-detect (images changed)
+                cameras_to_detect.append(imgs)
+                cameras_to_detect_indices.append(i)
+                result_detections.append(None)  # Placeholder
+                detect_count += 1
+        else:
+            # New camera not in cache
+            cameras_to_detect.append(imgs)
+            cameras_to_detect_indices.append(i)
+            result_detections.append(None)  # Placeholder
+            detect_count += 1
+
+    if detect_count == 0:
+        info(f"Reused all {reused_count} cameras from cache")
+        return result_detections
+
+    if reused_count > 0:
+        info(f"Reusing {reused_count} cameras from cache, detecting {detect_count} cameras")
+
+        # Detect boards for cameras that need it
+        info("Detecting boards for new/changed cameras..")
+        new_detections = image.detect.detect_images(boards, cameras_to_detect, j=j)
+
+        # Merge new detections into result
+        for idx, detections in zip(cameras_to_detect_indices, new_detections):
+            result_detections[idx] = detections
+
+        # Write updated cache
+        info(f"Writing updated detection cache to {detections_file}")
+        write_detections(detections_file, result_detections, cache_key)
+
+        return result_detections
+
+    # No cameras could be reused
+    return None
 
 
 def num_valid_detections(boards, frames):

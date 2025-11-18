@@ -21,22 +21,40 @@ def try_load_detections(filename, cache_key={}):
         return None
 
 
+def try_load_cache_data(filename):
+    """Load the full cache data structure (not just detected_points)"""
+    try:
+        with open(filename, "rb") as file:
+            return pickle.load(file)
+    except (OSError, IOError, EOFError, AttributeError) as e:
+        return None
+
+
 def check_dataset_similarity(loaded, cache_key):
     """
-    Checks whether the loaded datasets file format is similar to cached dataset
+    Checks whether the loaded datasets file format is similar to cached dataset.
+    Returns False if datasets don't match (different number of cameras, images, or paths).
+    This allows partial cache reuse to be attempted.
     """
     filenames = loaded.cache_key["filenames"]
     caches = cache_key["filenames"]
 
-    assert len(filenames) == len(caches)
+    # Check if number of cameras matches
+    if len(filenames) != len(caches):
+        info(f"Cache has {len(filenames)} cameras but current dataset has {len(caches)} cameras - will attempt partial cache reuse")
+        return False
+
+    # Check each camera's image count
     for i in range(len(filenames)):
-        assert len(filenames[i]) == len(caches[i])
+        if len(filenames[i]) != len(caches[i]):
+            info(f"Camera {i}: cache has {len(filenames[i])} images but current dataset has {len(caches[i])} images - will attempt partial cache reuse")
+            return False
+
+        # Check if image paths are similar (last 3 directory components)
         for j in range(len(filenames[i])):
             file_dirs = find_char(filenames[i][j])
             cache_dirs = find_char(caches[i][j])
-            if file_dirs[-3:] == cache_dirs[-3:]:
-                continue
-            else:
+            if file_dirs[-3:] != cache_dirs[-3:]:
                 return False
 
     return True

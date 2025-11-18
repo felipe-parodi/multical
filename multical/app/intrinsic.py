@@ -73,7 +73,10 @@ def calibrate_intrinsic(args):
 
     info({k: image_size for k, image_size in zip(camera_images.cameras, image_sizes)})
     cache_key = struct(
-        boards=boards, image_sizes=image_sizes, filenames=camera_images.filenames
+        boards=boards,
+        image_sizes=image_sizes,
+        filenames=camera_images.filenames,
+        camera_names=camera_images.cameras,
     )
 
     detected_points = detect_boards_cached(
@@ -84,6 +87,7 @@ def calibrate_intrinsic(args):
         boards,
         detected_points,
         image_sizes,
+        camera_names=camera_images.cameras,
         model=args.camera.distortion_model,
         fix_aspect=args.camera.fix_aspect,
         max_images=args.camera.limit_intrinsic,

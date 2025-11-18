@@ -124,6 +124,15 @@ class Camera(Parameters):
         if max_images is not None:
             points = top_detection_coverage(points, max_images, image_size)
 
+        # Validate that we have images to calibrate with
+        num_images = len(points.corners) if hasattr(points, 'corners') else 0
+        if num_images == 0:
+            raise ValueError(
+                f"No valid calibration images found for this camera. "
+                f"Ensure the calibration board is visible in at least some images. "
+                f"Image size: {image_size}"
+            )
+
         # termination criteria
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, max_iter, eps)
         flags = Camera.flags(model, fix_aspect) | flags
@@ -343,7 +352,28 @@ def calibration_points(boards, detections):
     return reduce(operator.add, board_points)
 
 
-def calibrate_cameras(boards, points, image_sizes, intrinsic_error_limit, **kwargs):
+def calibrate_cameras(boards, points, image_sizes, intrinsic_error_limit, camera_names=None, **kwargs):
+
+    # Pre-validate that each camera has detections before multiprocessing
+    for i, (cam_points, img_size) in enumerate(zip(points, image_sizes)):
+        cam_calib_points = calibration_points(boards, cam_points)
+        num_images = len(cam_calib_points.corners) if hasattr(cam_calib_points, 'corners') else 0
+
+        if num_images == 0:
+            camera_id = camera_names[i] if camera_names and i < len(camera_names) else f"Camera {i}"
+            raise ValueError(
+                f"\n{'='*60}\n"
+                f"ERROR: {camera_id} has NO valid calibration board detections!\n"
+                f"{'='*60}\n"
+                f"Image size: {img_size}\n"
+                f"This camera needs images with the calibration board visible.\n"
+                f"Check that:\n"
+                f"  - Images for this camera contain the calibration board\n"
+                f"  - The board pattern matches the board configuration file\n"
+                f"  - Images are not corrupted or too blurry\n"
+                f"{'='*60}"
+            )
+        print(f"Camera {i if not camera_names else camera_names[i]}: {num_images} valid calibration images")
 
     with ThreadPool() as pool:
         f = partial(Camera.calibrate, boards, intrinsic_error_limit, **kwargs)
