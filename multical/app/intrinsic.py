@@ -83,6 +83,8 @@ def calibrate_intrinsic(args):
         boards, images, paths.detections, cache_key, j=args.runtime.num_threads
     )
 
+    info(f"Board detection complete. Starting calibration for {len(camera_images.cameras)} cameras...")
+
     cameras, errs = calibrate_cameras(
         boards,
         detected_points,
@@ -92,6 +94,7 @@ def calibrate_intrinsic(args):
         fix_aspect=args.camera.fix_aspect,
         max_images=args.camera.limit_intrinsic,
         intrinsic_error_limit=args.camera.intrinsic_error_limit,
+        has_skew=args.camera.allow_skew,
     )
 
     for name, camera, err in zip(camera_images.cameras, cameras, errs):

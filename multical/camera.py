@@ -355,25 +355,42 @@ def calibration_points(boards, detections):
 def calibrate_cameras(boards, points, image_sizes, intrinsic_error_limit, camera_names=None, **kwargs):
 
     # Pre-validate that each camera has detections before multiprocessing
+    # Check all cameras first and collect failures
+    camera_stats = []
+    failed_cameras = []
+
     for i, (cam_points, img_size) in enumerate(zip(points, image_sizes)):
         cam_calib_points = calibration_points(boards, cam_points)
         num_images = len(cam_calib_points.corners) if hasattr(cam_calib_points, 'corners') else 0
+        camera_id = camera_names[i] if camera_names and i < len(camera_names) else f"Camera {i}"
+
+        camera_stats.append((camera_id, num_images, img_size))
 
         if num_images == 0:
-            camera_id = camera_names[i] if camera_names and i < len(camera_names) else f"Camera {i}"
-            raise ValueError(
-                f"\n{'='*60}\n"
-                f"ERROR: {camera_id} has NO valid calibration board detections!\n"
-                f"{'='*60}\n"
-                f"Image size: {img_size}\n"
-                f"This camera needs images with the calibration board visible.\n"
-                f"Check that:\n"
-                f"  - Images for this camera contain the calibration board\n"
-                f"  - The board pattern matches the board configuration file\n"
-                f"  - Images are not corrupted or too blurry\n"
-                f"{'='*60}"
-            )
-        print(f"Camera {i if not camera_names else camera_names[i]}: {num_images} valid calibration images")
+            failed_cameras.append(camera_id)
+
+    # Print summary of all cameras
+    print("\nCalibration image count per camera:")
+    for camera_id, num_images, img_size in camera_stats:
+        status = "✓" if num_images > 0 else "✗"
+        print(f"  {status} {camera_id}: {num_images} valid calibration images")
+
+    # If any cameras failed, report them all at once
+    if failed_cameras:
+        raise ValueError(
+            f"\n{'='*70}\n"
+            f"ERROR: {len(failed_cameras)} camera(s) have NO valid board detections!\n"
+            f"{'='*70}\n"
+            f"Failed cameras: {', '.join(failed_cameras)}\n"
+            f"\n"
+            f"These cameras need images with the calibration board visible.\n"
+            f"Check that:\n"
+            f"  - Images for these cameras contain the calibration board\n"
+            f"  - The board pattern matches the board configuration file\n"
+            f"  - Images are not corrupted or too blurry\n"
+            f"  - Camera names/folders are correct\n"
+            f"{'='*70}"
+        )
 
     with ThreadPool() as pool:
         f = partial(Camera.calibrate, boards, intrinsic_error_limit, **kwargs)
