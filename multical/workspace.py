@@ -22,6 +22,7 @@ from .camera import calibrate_cameras
 from .hand_eye.hand_eye import *
 
 from structs.numpy import shape
+from structs.numpy import Table
 
 from .camera_fisheye import calibrate_cameras_fisheye
 from .io.logging import MemoryHandler, info
@@ -396,6 +397,28 @@ class Workspace:
         info("Pose counts:")
         tables.table_info(self.pose_table.valid, self.names)
 
+        # Highlight cameras with zero valid poses
+        try:
+            cam_pose_counts = tables.count_valid(self.pose_table.valid, axes=[0])
+            zero_cam_ids = np.where(cam_pose_counts == 0)[0]
+            if zero_cam_ids.size > 0:
+                zero_cams = [self.names.camera[i] for i in zero_cam_ids]
+                warning_msg = (
+                    "\n" +
+                    "=" * 70 + "\n" +
+                    f"WARNING: {len(zero_cams)} camera(s) have 0 valid poses for extrinsics!\n" +
+                    "=" * 70 + "\n" +
+                    f"Cameras: {', '.join(zero_cams)}\n\n" +
+                    "These cameras cannot be assigned an extrinsic pose and will be\n" +
+                    "excluded from the exported camera_poses.\n" +
+                    "Consider dropping these cameras or recapturing with visible boards.\n" +
+                    "=" * 70
+                )
+                info(warning_msg)
+        except Exception:
+            # Do not fail calibration due to logging
+            pass
+
         # Non-overlapping case consideration
         if is_non_overlapping and camera_poses is None:
             handeye = HandEye(self.pose_table, self.names.camera, self.image_path)
@@ -441,7 +464,7 @@ class Workspace:
         auto_scale=None,
         outlier_threshold=5.0,
         reject_view_threshold=None,
-    ) -> Calibration:
+        ) -> Calibration:
 
         calib: Calibration = self.latest_calibration.enable(
             cameras=cameras,
@@ -468,6 +491,25 @@ class Workspace:
         calib.report(
             f"After adjust_outliers for '{name}'"
         )  # Report state after adjustments
+
+        # Summarize cameras lacking extrinsic poses
+        try:
+            cam_valid = calib.camera_poses.valid
+            zero_cam_ids = np.where(~cam_valid)[0]
+            if zero_cam_ids.size > 0:
+                zero_cams = [calib.camera_poses.names[i] for i in zero_cam_ids]
+                summary = (
+                    "\n" +
+                    "=" * 70 + "\n" +
+                    f"SUMMARY: Excluding {len(zero_cams)} camera(s) with no extrinsics\n" +
+                    "=" * 70 + "\n" +
+                    f"Cameras: {', '.join(zero_cams)}\n" +
+                    "They will not appear in camera_poses export.\n" +
+                    "=" * 70
+                )
+                info(summary)
+        except Exception:
+            pass
 
         # --- New View Rejection Step ---
         if reject_view_threshold is not None and reject_view_threshold > 0:
@@ -590,12 +632,144 @@ class Workspace:
         with open(filename, "w") as outfile:
             json.dump(to_dicts(data), outfile, indent=2)
 
+        # After exporting, clearly state which cameras were excluded from poses
+        try:
+            calib = self.latest_calibration if hasattr(self, 'calibrations') and self.has_calibrations() else None
+            if calib is not None:
+                cam_valid = calib.camera_poses.valid
+                zero_cam_ids = np.where(~cam_valid)[0]
+                if zero_cam_ids.size > 0:
+                    zero_cams = [calib.camera_poses.names[i] for i in zero_cam_ids]
+                    end_msg = (
+                        "\n" +
+                        "=" * 70 + "\n" +
+                        f"EXPORT NOTICE: {len(zero_cams)} camera(s) excluded from camera_poses\n" +
+                        "=" * 70 + "\n" +
+                        f"Cameras: {', '.join(zero_cams)}\n" +
+                        "Recommendation: Drop these cameras or recapture with boards.\n" +
+                        "They remain in the 'cameras' intrinsics section but have no extrinsics.\n" +
+                        "=" * 70
+                    )
+                    info(end_msg)
+        except Exception:
+            pass
+
     def dump(self, filename=None):
         filename = filename or path.join(self.output_path, f"{self.name}.pkl")
 
         info(f"Dumping state and history to {filename}")
+        # Build a filtered copy that drops cameras without valid extrinsics
+        ws_to_dump = self
+        try:
+            if self.has_calibrations():
+                latest = self.latest_calibration
+                cam_valid = np.array(latest.camera_poses.valid, dtype=bool)
+                keep_idx = np.where(cam_valid)[0]
+
+                if keep_idx.size < latest.size.cameras:
+                    dropped = [latest.camera_poses.names[i] for i in np.where(~cam_valid)[0]]
+                    info(
+                        "\n" +
+                        "=" * 70 + "\n" +
+                        f"PKL CLEANUP: dropping {len(dropped)} camera(s) without extrinsics from dump\n" +
+                        "=" * 70 + "\n" +
+                        f"Cameras: {', '.join(dropped)}\n" +
+                        "These cameras lacked valid extrinsic poses (0 pose count).\n" +
+                        "=" * 70
+                    )
+
+                    # Helper to index python lists
+                    def idx_list(xs, idx):
+                        return [xs[i] for i in idx]
+
+                    # Build a shallow filtered workspace instance
+                    ws_filtered = Workspace(self.output_path, self.name)
+
+                    # Names
+                    filtered_cam_names = idx_list(self.names.camera, keep_idx)
+                    ws_filtered.names = self.names._extend(camera=filtered_cam_names)
+
+                    # Filenames and sizes if available
+                    ws_filtered.filenames = idx_list(self.filenames, keep_idx) if self.filenames is not None else None
+                    ws_filtered.image_path = self.image_path
+                    ws_filtered.image_sizes = idx_list(self.image_sizes, keep_idx) if self.image_sizes is not None else None
+
+                    # Boards/colors unchanged
+                    ws_filtered.boards = self.boards
+                    ws_filtered.board_colors = self.board_colors
+
+                    # Cameras list filtered if available
+                    ws_filtered.cameras = idx_list(self.cameras, keep_idx) if getattr(self, 'cameras', None) is not None else None
+
+                    # Point table filtered along camera axis (0)
+                    if self.point_table is not None:
+                        ws_filtered.point_table = Table.create(
+                            points=self.point_table.points[keep_idx, ...],
+                            valid=self.point_table.valid[keep_idx, ...],
+                        )
+                    else:
+                        ws_filtered.point_table = None
+
+                    # Pose table (per-view estimates) filtered along camera axis (0)
+                    if self.pose_table is not None:
+                        kwargs = {}
+                        # Slice known fields when present
+                        if hasattr(self.pose_table, 'poses'):
+                            kwargs['poses'] = self.pose_table.poses[keep_idx, ...]
+                        if hasattr(self.pose_table, 'num_points'):
+                            kwargs['num_points'] = self.pose_table.num_points[keep_idx, ...]
+                        if hasattr(self.pose_table, 'valid'):
+                            kwargs['valid'] = self.pose_table.valid[keep_idx, ...]
+                        if hasattr(self.pose_table, 'reprojection_error'):
+                            kwargs['reprojection_error'] = self.pose_table.reprojection_error[keep_idx, ...]
+                        if hasattr(self.pose_table, 'view_angles'):
+                            kwargs['view_angles'] = self.pose_table.view_angles[keep_idx, ...]
+                        ws_filtered.pose_table = Table.create(**kwargs) if kwargs else None
+                    else:
+                        ws_filtered.pose_table = None
+
+                    # Calibrations: rebuild each with filtered cameras and tables
+                    ws_filtered.calibrations = OrderedDict()
+                    for k, calib in self.calibrations.items():
+                        # Cameras
+                        filtered_cameras = idx_list(list(calib.cameras), keep_idx)
+                        cameras_pl = ParamList(filtered_cameras, [self.names.camera[i] for i in keep_idx])
+
+                        # Camera poses (per-camera)
+                        cam_pose_tbl = calib.camera_poses.pose_table
+                        cam_pose_tbl_f = Table.create(
+                            poses=cam_pose_tbl.poses[keep_idx, ...],
+                            valid=cam_pose_tbl.valid[keep_idx, ...],
+                        )
+                        camera_poses_ps = PoseSet(cam_pose_tbl_f, [calib.camera_poses.names[i] for i in keep_idx])
+
+                        # Point table
+                        pt = calib.point_table
+                        pt_f = Table.create(points=pt.points[keep_idx, ...], valid=pt.valid[keep_idx, ...])
+
+                        # Inlier mask (optional)
+                        inliers_f = calib.inlier_mask[keep_idx, ...] if calib.inlier_mask is not None else None
+
+                        # Rebuild calibration
+                        calib_f = calib.copy(
+                            cameras=cameras_pl,
+                            camera_poses=camera_poses_ps,
+                            point_table=pt_f,
+                            inlier_mask=inliers_f,
+                        )
+                        ws_filtered.calibrations[k] = calib_f
+
+                    # Keep logging, detections, etc.
+                    ws_filtered.detections = None
+                    ws_filtered.log_handler = self.log_handler
+
+                    ws_to_dump = ws_filtered
+        except Exception:
+            # On any issue, fall back to dumping the original workspace
+            pass
+
         with open(filename, "wb") as file:
-            pickle.dump(self, file)
+            pickle.dump(ws_to_dump, file)
 
     @staticmethod
     def load(filename):
