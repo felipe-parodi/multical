@@ -95,6 +95,8 @@ def calibrate_intrinsic(args):
         max_images=args.camera.limit_intrinsic,
         intrinsic_error_limit=args.camera.intrinsic_error_limit,
         has_skew=args.camera.allow_skew,
+        fix_radial=args.camera.fix_radial,
+        fix_tangential=args.camera.fix_tangential,
     )
 
     for name, camera, err in zip(camera_images.cameras, cameras, errs):

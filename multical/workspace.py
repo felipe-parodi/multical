@@ -340,6 +340,8 @@ class Workspace:
         has_skew=False,
         max_images=None,
         isFisheye=False,
+        fix_radial=False,
+        fix_tangential=True,
     ):
         assert (
             self.detected_points is not None
@@ -358,6 +360,8 @@ class Workspace:
                 fix_aspect=fix_aspect,
                 has_skew=has_skew,
                 max_images=max_images,
+                fix_radial=fix_radial,
+                fix_tangential=fix_tangential,
             )
         else:
             self.cameras, errs = calibrate_cameras_fisheye(

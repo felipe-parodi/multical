@@ -96,6 +96,8 @@ class Camera(Parameters):
         has_skew=False,
         flags=0,
         max_images=None,
+        fix_radial=False,
+        fix_tangential=True,
     ):
         # def calibrate(boards, detections, image_size, intrinsic_error_limit,
         #               max_iter=10, eps=1e-3, model='standard', fix_aspect=False,
@@ -136,16 +138,17 @@ class Camera(Parameters):
         # termination criteria
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, max_iter, eps)
         flags = Camera.flags(model, fix_aspect) | flags
-        print("FIXED ALL, K1, K2, K3, ZERO TANGENT DIST")
-        # flags = Camera.flags(model, fix_aspect) | flags | cv2.CALIB_FIX_K1 | cv2.CALIB_FIX_K2 | cv2.CALIB_FIX_K3
-        flags = (
-            Camera.flags(model, fix_aspect)
-            | flags
-            | cv2.CALIB_FIX_K1
-            | cv2.CALIB_FIX_K2
-            | cv2.CALIB_FIX_K3
-            | cv2.CALIB_ZERO_TANGENT_DIST
-        )
+
+        # Configurable distortion flags
+        if fix_radial:
+            flags |= cv2.CALIB_FIX_K1 | cv2.CALIB_FIX_K2 | cv2.CALIB_FIX_K3
+        if fix_tangential:
+            flags |= cv2.CALIB_ZERO_TANGENT_DIST
+
+        # Log which distortion model is being used
+        radial_status = "fixed (k1=k2=k3=0)" if fix_radial else "free (estimating k1,k2,k3)"
+        tangent_status = "fixed (p1=p2=0)" if fix_tangential else "free (estimating p1,p2)"
+        print(f"Distortion model: radial={radial_status}, tangential={tangent_status}")
 
         err = intrinsic_error_limit
         while abs(err) >= intrinsic_error_limit:

@@ -46,6 +46,10 @@ class CameraOpts:
     isFisheye: bool = False  # Use fisheye camera -> changes distortion models
     intrinsic_error_limit: float = 0.5  # for iterative intrinsic calculation
 
+    # Distortion coefficient control
+    fix_radial: bool = False  # Fix radial distortion (k1, k2, k3) to zero
+    fix_tangential: bool = True  # Fix tangential distortion (p1, p2) to zero
+
     calibration: Optional[str] = (
         None  # Initialise from previous (or single camera) calibration
     )

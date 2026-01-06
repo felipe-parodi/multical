@@ -6,6 +6,7 @@ from typing import Union
 
 from multical.app.boards import Boards
 from multical.app.calibrate import Calibrate
+from multical.app.diagnose import Diagnose
 from multical.app.intrinsic import Intrinsic
 from multical.app.vis import Vis
 
@@ -15,11 +16,12 @@ class Multical:
     """multical - multi camera calibration
     - calibrate: multi-camera calibration
     - intrinsic: calibrate separate intrinsic parameters
+    - diagnose: diagnose optimal distortion model
     - boards: generate/visualize board images, test detections
     - vis: visualize results of a calibration
     """
 
-    command: Union[Calibrate, Intrinsic, Boards, Vis]
+    command: Union[Calibrate, Intrinsic, Diagnose, Boards, Vis]
 
     def execute(self):
         return self.command.execute()

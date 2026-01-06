@@ -39,6 +39,8 @@ def initialise_with_images(
             has_skew=camera_opts.allow_skew,
             max_images=camera_opts.limit_intrinsic,
             isFisheye=camera_opts.isFisheye,
+            fix_radial=camera_opts.fix_radial,
+            fix_tangential=camera_opts.fix_tangential,
         )
 
     ws.initialise_poses(
